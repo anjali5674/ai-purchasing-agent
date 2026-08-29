@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: purchasing_agent_db
+    environment:
+      POSTGRES_USER: purchasing_agent
+      POSTGRES_PASSWORD: purchasing_agent_dev
+      POSTGRES_DB: purchasing_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
