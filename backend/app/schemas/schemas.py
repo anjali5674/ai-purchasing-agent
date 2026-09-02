@@ -148,12 +148,16 @@ class AgentDecisionResponse(BaseModel):
     recommendation_id: int
     decision: str
     suggested_quantity: Optional[int] = None
+    selected_supplier_id: Optional[int] = None
+    supplier_selection_reason: Optional[str] = None
+    supplier_comparison: Optional[dict] = None
     reasoning: str
     important_factors: Optional[list] = None
     constraints_checked: Optional[list] = None
     confidence: str
     requires_human_approval: int
     created_at: datetime
+    selected_supplier: Optional[SupplierResponse] = None
 
     model_config = {"from_attributes": True}
 
@@ -181,11 +185,14 @@ class RecommendationResponse(BaseModel):
     product_id: int
     node_id: int
     supplier_id: Optional[int] = None
+    secondary_supplier_id: Optional[int] = None
     recommended_quantity: int
     status: str
     created_at: datetime
     product: Optional[ProductResponse] = None
     node: Optional[FulfillmentNodeResponse] = None
+    primary_supplier: Optional[SupplierResponse] = None
+    secondary_supplier: Optional[SupplierResponse] = None
     decisions: Optional[list[AgentDecisionResponse]] = None
     activity_logs: Optional[list[AgentActivityLogResponse]] = None
 
@@ -198,11 +205,14 @@ class RecommendationListResponse(BaseModel):
     product_id: int
     node_id: int
     supplier_id: Optional[int] = None
+    secondary_supplier_id: Optional[int] = None
     recommended_quantity: int
     status: str
     created_at: datetime
     product: Optional[ProductResponse] = None
     node: Optional[FulfillmentNodeResponse] = None
+    primary_supplier: Optional[SupplierResponse] = None
+    secondary_supplier: Optional[SupplierResponse] = None
 
     model_config = {"from_attributes": True}
 
