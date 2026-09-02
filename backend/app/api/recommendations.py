@@ -13,7 +13,9 @@ This is the central API for the purchasing workflow:
 import logging
 from datetime import datetime, timezone
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session, joinedload
 
 from app.database.database import get_db
@@ -45,6 +47,8 @@ def list_recommendations(db: Session = Depends(get_db)):
         .options(
             joinedload(PurchasingRecommendation.product),
             joinedload(PurchasingRecommendation.node),
+            joinedload(PurchasingRecommendation.primary_supplier),
+            joinedload(PurchasingRecommendation.secondary_supplier),
         )
         .order_by(PurchasingRecommendation.created_at.desc())
         .all()
@@ -58,6 +62,8 @@ def get_recommendation(rec_id: int, db: Session = Depends(get_db)):
         .options(
             joinedload(PurchasingRecommendation.product),
             joinedload(PurchasingRecommendation.node),
+            joinedload(PurchasingRecommendation.primary_supplier),
+            joinedload(PurchasingRecommendation.secondary_supplier),
             joinedload(PurchasingRecommendation.decisions),
             joinedload(PurchasingRecommendation.activity_logs),
         )
@@ -73,7 +79,7 @@ def get_recommendation(rec_id: int, db: Session = Depends(get_db)):
 def get_recommendation_context(rec_id: int, db: Session = Depends(get_db)):
     """Aggregate all related data for the recommendation detail page.
 
-    Returns inventory, demand forecast, open POs, supplier info, budget, and
+    Returns inventory, demand forecast, open POs, both candidate suppliers info, budget, and
     storage capacity — exactly what the agent investigates.
     """
     from app.models.models import (
@@ -112,16 +118,35 @@ def get_recommendation_context(rec_id: int, db: Session = Depends(get_db)):
     )
     open_po_total = sum(po.quantity for po in open_pos)
 
-    # Supplier
-    supplier = None
-    supplier_price = None
-    if rec.supplier_id:
-        supplier = db.query(Supplier).filter(Supplier.id == rec.supplier_id).first()
+    # Candidate Suppliers Helper
+    def _get_supplier_info(supplier_id: int | None):
+        if not supplier_id:
+            return None
+        sup = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+        if not sup:
+            return None
         sp = db.query(SupplierProduct).filter(
-            SupplierProduct.supplier_id == rec.supplier_id,
+            SupplierProduct.supplier_id == supplier_id,
             SupplierProduct.product_id == rec.product_id,
         ).first()
-        supplier_price = sp.unit_price if sp else None
+        return {
+            "id": sup.id,
+            "name": sup.name,
+            "lead_time_days": sup.lead_time_days,
+            "minimum_order_quantity": sup.minimum_order_quantity,
+            "available_quantity": sup.available_quantity,
+            "reliability_score": sup.reliability_score,
+            "unit_price": sp.unit_price if sp else None,
+        }
+
+    supplier = _get_supplier_info(rec.supplier_id)
+    secondary_supplier = _get_supplier_info(rec.secondary_supplier_id)
+
+    candidate_suppliers = []
+    if supplier:
+        candidate_suppliers.append({**supplier, "is_primary": True})
+    if secondary_supplier:
+        candidate_suppliers.append({**secondary_supplier, "is_primary": False})
 
     # Budget
     budget = db.query(Budget).filter(Budget.node_id == rec.node_id).first()
@@ -171,15 +196,9 @@ def get_recommendation_context(rec_id: int, db: Session = Depends(get_db)):
                 for po in open_pos
             ],
         },
-        "supplier": {
-            "id": supplier.id if supplier else None,
-            "name": supplier.name if supplier else None,
-            "lead_time_days": supplier.lead_time_days if supplier else None,
-            "minimum_order_quantity": supplier.minimum_order_quantity if supplier else None,
-            "available_quantity": supplier.available_quantity if supplier else None,
-            "reliability_score": supplier.reliability_score if supplier else None,
-            "unit_price": supplier_price,
-        } if supplier else None,
+        "supplier": supplier,
+        "secondary_supplier": secondary_supplier,
+        "candidate_suppliers": candidate_suppliers,
         "budget": {
             "total_budget": budget.available_amount if budget else 0,
             "committed_spend": committed_spend,
