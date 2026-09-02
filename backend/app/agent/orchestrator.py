@@ -21,7 +21,9 @@ import time
 from datetime import datetime, timezone
 
 from google import genai
+# pyrefly: ignore [missing-import]
 from google.genai import types, errors
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -78,8 +80,8 @@ def review_recommendation(db: Session, recommendation_id: int, context: str | No
         "recommended_quantity": recommendation.recommended_quantity,
     })
 
-    # Build initial user message with recommendation context
-    user_message = _build_user_message(recommendation, context)
+    # Build initial user message with recommendation context and candidate suppliers
+    user_message = _build_user_message(db, recommendation, context)
 
     # Initialize Gemini client
     client = genai.Client(api_key=settings.gemini_api_key)
@@ -128,8 +130,10 @@ def review_recommendation(db: Session, recommendation_id: int, context: str | No
     return result
 
 
-def _build_user_message(recommendation: PurchasingRecommendation, context: str | None) -> str:
-    """Build the initial user message with recommendation details."""
+def _build_user_message(db: Session, recommendation: PurchasingRecommendation, context: str | None) -> str:
+    """Build the initial user message with recommendation details and candidate suppliers."""
+    from app.models.models import Supplier, SupplierProduct
+
     msg = (
         f"Please review the following purchasing recommendation:\n\n"
         f"- Recommendation ID: {recommendation.id}\n"
@@ -137,14 +141,43 @@ def _build_user_message(recommendation: PurchasingRecommendation, context: str |
         f"- Fulfillment Node ID: {recommendation.node_id}\n"
         f"- Recommended Quantity: {recommendation.recommended_quantity}\n"
     )
+
     if recommendation.supplier_id:
-        msg += f"- Suggested Supplier ID: {recommendation.supplier_id}\n"
+        s1 = db.query(Supplier).filter(Supplier.id == recommendation.supplier_id).first()
+        sp1 = db.query(SupplierProduct).filter(
+            SupplierProduct.supplier_id == recommendation.supplier_id,
+            SupplierProduct.product_id == recommendation.product_id,
+        ).first()
+        if s1:
+            price_str = f"${sp1.unit_price:.2f}" if sp1 else "N/A"
+            msg += (
+                f"- Candidate Supplier 1: ID {s1.id} ({s1.name}) | Price: {price_str} | "
+                f"Lead Time: {s1.lead_time_days} days | MOQ: {s1.minimum_order_quantity} | "
+                f"Available: {s1.available_quantity} | Reliability: {int(s1.reliability_score * 100)}%\n"
+            )
+
+    if recommendation.secondary_supplier_id:
+        s2 = db.query(Supplier).filter(Supplier.id == recommendation.secondary_supplier_id).first()
+        sp2 = db.query(SupplierProduct).filter(
+            SupplierProduct.supplier_id == recommendation.secondary_supplier_id,
+            SupplierProduct.product_id == recommendation.product_id,
+        ).first()
+        if s2:
+            price_str = f"${sp2.unit_price:.2f}" if sp2 else "N/A"
+            msg += (
+                f"- Candidate Supplier 2: ID {s2.id} ({s2.name}) | Price: {price_str} | "
+                f"Lead Time: {s2.lead_time_days} days | MOQ: {s2.minimum_order_quantity} | "
+                f"Available: {s2.available_quantity} | Reliability: {int(s2.reliability_score * 100)}%\n"
+            )
+
     if context:
         msg += f"\nAdditional context: {context}\n"
+
     msg += (
         "\nPlease investigate this recommendation using the available tools. "
-        "Check inventory, demand, open POs, supplier, budget, and storage. "
-        "Then provide your decision."
+        "Compare both candidate suppliers across all dimensions (pricing, lead time, MOQ, available stock, reliability). "
+        "Select the optimal supplier (populate selected_supplier_id, supplier_selection_reason, and supplier_comparison), "
+        "evaluate inventory, demand, open POs, budget, and storage capacity, then provide your final decision."
     )
     return msg
 
@@ -283,10 +316,14 @@ def _parse_decision(content: str) -> dict:
 
 def _store_decision(db: Session, recommendation: PurchasingRecommendation, decision_data: dict) -> AgentDecision:
     """Persist an agent decision to the database."""
+    selected_sup_id = decision_data.get("selected_supplier_id") or recommendation.supplier_id
     decision = AgentDecision(
         recommendation_id=recommendation.id,
         decision=AgentDecisionType(decision_data["decision"]),
         suggested_quantity=decision_data.get("suggested_quantity"),
+        selected_supplier_id=selected_sup_id,
+        supplier_selection_reason=decision_data.get("supplier_selection_reason"),
+        supplier_comparison=decision_data.get("supplier_comparison"),
         reasoning=decision_data["reasoning"],
         important_factors=decision_data.get("important_factors", []),
         constraints_checked=decision_data.get("constraints_checked", []),
@@ -309,7 +346,7 @@ def _execute_and_validate(
 ) -> dict:
     """Create/modify a PO, validate it, and run the feedback loop if needed."""
     quantity = decision_data.get("suggested_quantity") or recommendation.recommended_quantity
-    supplier_id = recommendation.supplier_id or 1  # fallback
+    supplier_id = decision_data.get("selected_supplier_id") or recommendation.supplier_id or 1
 
     # Get unit price from supplier-product mapping
     from app.models.models import SupplierProduct
@@ -328,6 +365,7 @@ def _execute_and_validate(
         recommendation.status = RecommendationStatus.PENDING_APPROVAL
         _log_activity(db, recommendation.id, "human_approval_requested", {
             "quantity": quantity,
+            "supplier_id": supplier_id,
             "reason": "Agent flagged this decision for human approval",
         })
         result["decision"]["requires_human_approval"] = 1
@@ -363,9 +401,14 @@ def _execute_and_validate(
     result["validation"] = validation.model_dump()
     result["purchase_order"] = {
         "id": po.id,
+        "product_id": po.product_id,
+        "supplier_id": po.supplier_id,
+        "node_id": po.node_id,
         "quantity": po.quantity,
+        "unit_price": po.unit_price,
         "total_price": po.total_price,
         "status": po.status.value,
+        "created_at": po.created_at.isoformat() if po.created_at else None,
     }
 
     # Feedback loop
@@ -469,6 +512,9 @@ def _decision_to_response(decision: AgentDecision) -> dict:
         "recommendation_id": decision.recommendation_id,
         "decision": decision.decision.value,
         "suggested_quantity": decision.suggested_quantity,
+        "selected_supplier_id": decision.selected_supplier_id,
+        "supplier_selection_reason": decision.supplier_selection_reason,
+        "supplier_comparison": decision.supplier_comparison,
         "reasoning": decision.reasoning,
         "important_factors": decision.important_factors,
         "constraints_checked": decision.constraints_checked,
