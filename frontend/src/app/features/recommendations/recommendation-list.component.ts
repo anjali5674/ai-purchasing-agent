@@ -21,7 +21,7 @@ import { Recommendation } from '../../core/models/interfaces';
     <div class="page-container">
       <div class="page-header">
         <h1>Purchase Recommendations</h1>
-        <p>AI agent investigation and decision queue</p>
+        <p>AI agent investigation and dual-supplier decision queue</p>
       </div>
 
       <div *ngIf="loading" class="loading-container">
@@ -50,6 +50,21 @@ import { Recommendation } from '../../core/models/interfaces';
           <ng-container matColumnDef="node">
             <th mat-header-cell *matHeaderCellDef>Fulfillment Node</th>
             <td mat-cell *matCellDef="let r">{{ r.node?.name || 'Node ' + r.node_id }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="suppliers">
+            <th mat-header-cell *matHeaderCellDef>Candidate Suppliers</th>
+            <td mat-cell *matCellDef="let r">
+              <div class="suppliers-cell">
+                <span class="sup-chip primary" *ngIf="r.primary_supplier">
+                  <mat-icon>local_shipping</mat-icon> {{ r.primary_supplier.name }}
+                </span>
+                <span class="sup-chip secondary" *ngIf="r.secondary_supplier">
+                  <mat-icon>alt_route</mat-icon> {{ r.secondary_supplier.name }}
+                </span>
+                <span *ngIf="!r.primary_supplier && !r.secondary_supplier" class="text-muted">None</span>
+              </div>
+            </td>
           </ng-container>
 
           <ng-container matColumnDef="quantity">
@@ -111,6 +126,36 @@ import { Recommendation } from '../../core/models/interfaces';
       font-family: monospace;
     }
 
+    .suppliers-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .sup-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      width: fit-content;
+      mat-icon { font-size: 13px; width: 13px; height: 13px; }
+      &.primary {
+        background: rgba(6, 182, 212, 0.12);
+        color: var(--accent-cyan);
+      }
+      &.secondary {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-secondary);
+      }
+    }
+
+    .text-muted {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
     .qty {
       font-weight: 600;
       font-size: 15px;
@@ -126,7 +171,7 @@ import { Recommendation } from '../../core/models/interfaces';
 export class RecommendationListComponent implements OnInit {
   recommendations: Recommendation[] = [];
   loading = true;
-  displayedColumns = ['id', 'product', 'node', 'quantity', 'status', 'actions'];
+  displayedColumns = ['id', 'product', 'node', 'suppliers', 'quantity', 'status', 'actions'];
 
   constructor(private api: ApiService) {}
 
