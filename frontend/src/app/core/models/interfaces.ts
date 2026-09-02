@@ -70,17 +70,37 @@ export interface PurchaseOrder {
 // ---------------------------------------------------------------------------
 // Agent Decision
 // ---------------------------------------------------------------------------
+export interface CandidateSupplierComparison {
+  supplier_id?: number;
+  name?: string;
+  unit_price?: number;
+  reliability_score?: number;
+  lead_time_days?: number;
+  pros?: string[];
+  cons?: string[];
+}
+
+export interface SupplierComparisonData {
+  candidate_1?: CandidateSupplierComparison;
+  candidate_2?: CandidateSupplierComparison;
+  verdict?: string;
+}
+
 export interface AgentDecision {
   id: number;
   recommendation_id: number;
   decision: 'ACCEPT' | 'MODIFY' | 'REJECT' | 'INVESTIGATE';
   suggested_quantity: number | null;
+  selected_supplier_id?: number | null;
+  supplier_selection_reason?: string | null;
+  supplier_comparison?: SupplierComparisonData | null;
   reasoning: string;
   important_factors: string[];
   constraints_checked: string[];
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   requires_human_approval: number;
   created_at: string;
+  selected_supplier?: Supplier;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,11 +122,14 @@ export interface Recommendation {
   product_id: number;
   node_id: number;
   supplier_id?: number;
+  secondary_supplier_id?: number;
   recommended_quantity: number;
   status: string;
   created_at: string;
   product?: Product;
   node?: FulfillmentNode;
+  primary_supplier?: Supplier;
+  secondary_supplier?: Supplier;
   decisions?: AgentDecision[];
   activity_logs?: AgentActivityLog[];
 }
@@ -153,6 +176,17 @@ export interface DashboardSummary {
 // ---------------------------------------------------------------------------
 // Recommendation Context (aggregated data for detail page)
 // ---------------------------------------------------------------------------
+export interface SupplierContextInfo {
+  id: number;
+  name: string;
+  lead_time_days: number;
+  minimum_order_quantity: number;
+  available_quantity: number;
+  reliability_score: number;
+  unit_price: number;
+  is_primary?: boolean;
+}
+
 export interface RecommendationContext {
   inventory: {
     current_quantity: number;
@@ -166,15 +200,9 @@ export interface RecommendationContext {
     total_quantity: number;
     orders: { id: number; quantity: number; status: string }[];
   };
-  supplier: {
-    id: number;
-    name: string;
-    lead_time_days: number;
-    minimum_order_quantity: number;
-    available_quantity: number;
-    reliability_score: number;
-    unit_price: number;
-  } | null;
+  supplier: SupplierContextInfo | null;
+  secondary_supplier?: SupplierContextInfo | null;
+  candidate_suppliers?: SupplierContextInfo[];
   budget: {
     total_budget: number;
     committed_spend: number;
