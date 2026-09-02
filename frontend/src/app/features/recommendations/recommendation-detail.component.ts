@@ -133,8 +133,55 @@ import {
             </div>
           </mat-card>
 
-          <!-- Supplier -->
-          <mat-card class="info-card" *ngIf="context?.supplier">
+          <!-- Candidate Suppliers Comparison -->
+          <mat-card class="info-card supplier-candidates-card" *ngIf="context?.candidate_suppliers?.length">
+            <div class="card-header-with-badge">
+              <h3><mat-icon>compare_arrows</mat-icon> Candidate Suppliers ({{ context?.candidate_suppliers?.length }})</h3>
+              <span class="sub-badge">Agent Compares Both</span>
+            </div>
+            <div class="suppliers-compare-list">
+              <div *ngFor="let sup of context?.candidate_suppliers"
+                   class="supplier-candidate-box"
+                   [class.is-selected]="latestDecision?.selected_supplier_id === sup.id">
+                <div class="candidate-header">
+                  <div class="cand-title-group">
+                    <span class="cand-badge">{{ sup.is_primary ? 'Candidate 1 (Primary)' : 'Candidate 2 (Alternative)' }}</span>
+                    <strong class="cand-name">{{ sup.name }}</strong>
+                  </div>
+                  <span *ngIf="latestDecision?.selected_supplier_id === sup.id" class="chosen-badge">
+                    <mat-icon>verified</mat-icon> Selected by AI
+                  </span>
+                </div>
+                <div class="candidate-metrics-grid">
+                  <div class="metric-item">
+                    <span class="m-label">Unit Price</span>
+                    <span class="m-val price">\${{ sup.unit_price | number:'1.2-2' }}</span>
+                  </div>
+                  <div class="metric-item">
+                    <span class="m-label">Lead Time</span>
+                    <span class="m-val">{{ sup.lead_time_days }}d</span>
+                  </div>
+                  <div class="metric-item">
+                    <span class="m-label">MOQ</span>
+                    <span class="m-val">{{ sup.minimum_order_quantity | number }}</span>
+                  </div>
+                  <div class="metric-item">
+                    <span class="m-label">Stock</span>
+                    <span class="m-val">{{ sup.available_quantity | number }}</span>
+                  </div>
+                  <div class="metric-item">
+                    <span class="m-label">Reliability</span>
+                    <span class="m-val" [style.color]="sup.reliability_score >= 0.8 ? 'var(--status-accept)' : 'var(--status-modify)'">
+                      {{ (sup.reliability_score * 100) | number:'1.0-0' }}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </mat-card>
+
+          <!-- Fallback Supplier Card if candidate_suppliers is not populated -->
+          <mat-card class="info-card" *ngIf="!context?.candidate_suppliers?.length && context?.supplier">
             <h3><mat-icon>local_shipping</mat-icon> Supplier</h3>
             <div class="info-row">
               <span class="info-label">Supplier</span>
@@ -242,6 +289,87 @@ import {
           <div class="reasoning-section">
             <h4>Reasoning</h4>
             <p>{{ latestDecision.reasoning }}</p>
+          </div>
+
+          <!-- Supplier Selection & Comparison Section -->
+          <div class="supplier-decision-block" *ngIf="latestDecision.selected_supplier_id || latestDecision.supplier_selection_reason">
+            <mat-divider></mat-divider>
+            <div class="supplier-decision-header">
+              <h4><mat-icon>handshake</mat-icon> Supplier Selection & Comparative Analysis</h4>
+              <span class="selected-sup-chip" *ngIf="latestDecision.selected_supplier_id">
+                <mat-icon>verified</mat-icon> Chosen: {{ getSelectedSupplierName() }}
+              </span>
+            </div>
+
+            <!-- Supplier Selection Justification -->
+            <div class="supplier-selection-reasoning" *ngIf="latestDecision.supplier_selection_reason">
+              <div class="reason-label"><mat-icon>psychology_alt</mat-icon> Why this supplier was chosen:</div>
+              <p class="reason-text">{{ latestDecision.supplier_selection_reason }}</p>
+            </div>
+
+            <!-- Supplier Comparison Breakdown -->
+            <div class="comparison-breakdown" *ngIf="latestDecision.supplier_comparison">
+              <div class="breakdown-grid">
+                <!-- Candidate 1 -->
+                <div class="breakdown-card" *ngIf="latestDecision.supplier_comparison.candidate_1"
+                     [class.winner]="latestDecision.supplier_comparison.candidate_1.supplier_id === latestDecision.selected_supplier_id">
+                  <div class="breakdown-card-head">
+                    <span class="b-name">{{ latestDecision.supplier_comparison.candidate_1.name || 'Candidate 1' }}</span>
+                    <span class="b-price" *ngIf="latestDecision.supplier_comparison.candidate_1.unit_price">
+                      \${{ latestDecision.supplier_comparison.candidate_1.unit_price | number:'1.2-2' }}
+                    </span>
+                  </div>
+                  <div class="b-metrics" *ngIf="latestDecision.supplier_comparison.candidate_1.reliability_score !== undefined">
+                    <span>Reliability: {{ (latestDecision.supplier_comparison.candidate_1.reliability_score * 100) | number:'1.0-0' }}%</span>
+                    <span *ngIf="latestDecision.supplier_comparison.candidate_1.lead_time_days">Lead: {{ latestDecision.supplier_comparison.candidate_1.lead_time_days }}d</span>
+                  </div>
+                  <div class="pros-cons">
+                    <ul class="pros-list" *ngIf="latestDecision.supplier_comparison.candidate_1.pros?.length">
+                      <li *ngFor="let p of latestDecision.supplier_comparison.candidate_1.pros">
+                        <mat-icon>check</mat-icon> {{ p }}
+                      </li>
+                    </ul>
+                    <ul class="cons-list" *ngIf="latestDecision.supplier_comparison.candidate_1.cons?.length">
+                      <li *ngFor="let c of latestDecision.supplier_comparison.candidate_1.cons">
+                        <mat-icon>close</mat-icon> {{ c }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- Candidate 2 -->
+                <div class="breakdown-card" *ngIf="latestDecision.supplier_comparison.candidate_2"
+                     [class.winner]="latestDecision.supplier_comparison.candidate_2.supplier_id === latestDecision.selected_supplier_id">
+                  <div class="breakdown-card-head">
+                    <span class="b-name">{{ latestDecision.supplier_comparison.candidate_2.name || 'Candidate 2' }}</span>
+                    <span class="b-price" *ngIf="latestDecision.supplier_comparison.candidate_2.unit_price">
+                      \${{ latestDecision.supplier_comparison.candidate_2.unit_price | number:'1.2-2' }}
+                    </span>
+                  </div>
+                  <div class="b-metrics" *ngIf="latestDecision.supplier_comparison.candidate_2.reliability_score !== undefined">
+                    <span>Reliability: {{ (latestDecision.supplier_comparison.candidate_2.reliability_score * 100) | number:'1.0-0' }}%</span>
+                    <span *ngIf="latestDecision.supplier_comparison.candidate_2.lead_time_days">Lead: {{ latestDecision.supplier_comparison.candidate_2.lead_time_days }}d</span>
+                  </div>
+                  <div class="pros-cons">
+                    <ul class="pros-list" *ngIf="latestDecision.supplier_comparison.candidate_2.pros?.length">
+                      <li *ngFor="let p of latestDecision.supplier_comparison.candidate_2.pros">
+                        <mat-icon>check</mat-icon> {{ p }}
+                      </li>
+                    </ul>
+                    <ul class="cons-list" *ngIf="latestDecision.supplier_comparison.candidate_2.cons?.length">
+                      <li *ngFor="let c of latestDecision.supplier_comparison.candidate_2.cons">
+                        <mat-icon>close</mat-icon> {{ c }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="verdict-bar" *ngIf="latestDecision.supplier_comparison.verdict">
+                <mat-icon>gavel</mat-icon>
+                <span><strong>AI Comparative Verdict:</strong> {{ latestDecision.supplier_comparison.verdict }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- Important Factors -->
@@ -501,6 +629,236 @@ import {
     .reasoning-section p { line-height: 1.6; }
     .factors-section ul { padding-left: 20px; }
     .factors-section li { margin-bottom: 4px; line-height: 1.5; }
+
+    /* Candidate Suppliers Card */
+    .supplier-candidates-card {
+      padding: 20px !important;
+    }
+    .card-header-with-badge {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      h3 { margin-bottom: 0 !important; }
+      .sub-badge {
+        font-size: 11px;
+        color: var(--accent-cyan);
+        background: rgba(6, 182, 212, 0.1);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+    }
+    .suppliers-compare-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .supplier-candidate-box {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 14px;
+      transition: all 0.2s ease;
+      &.is-selected {
+        border-color: var(--accent-cyan);
+        background: rgba(6, 182, 212, 0.05);
+        box-shadow: 0 0 12px rgba(6, 182, 212, 0.15);
+      }
+    }
+    .candidate-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .cand-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .cand-badge {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    .cand-name {
+      font-size: 14px;
+      color: #fff;
+    }
+    .chosen-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.15);
+      padding: 3px 10px;
+      border-radius: 12px;
+      mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    }
+    .candidate-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 8px;
+      border-radius: 6px;
+    }
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-align: center;
+    }
+    .m-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+    .m-val {
+      font-size: 12px;
+      font-weight: 600;
+      &.price { color: var(--accent-cyan); }
+    }
+
+    /* Supplier Decision Block in AI Summary */
+    .supplier-decision-block {
+      margin: 20px 0;
+      padding-top: 10px;
+    }
+    .supplier-decision-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      h4 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--accent-cyan);
+        margin: 0;
+        mat-icon { font-size: 18px; width: 18px; height: 18px; }
+      }
+    }
+    .selected-sup-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--status-accept);
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    }
+    .supplier-selection-reasoning {
+      background: rgba(6, 182, 212, 0.08);
+      border-left: 3px solid var(--accent-cyan);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+    .reason-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 4px;
+      mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    }
+    .reason-text {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+    .comparison-breakdown {
+      margin-top: 12px;
+    }
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .breakdown-card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 14px;
+      &.winner {
+        border-color: rgba(52, 211, 153, 0.5);
+        background: rgba(52, 211, 153, 0.04);
+      }
+    }
+    .breakdown-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 6px;
+      .b-name { color: #fff; }
+      .b-price { color: var(--accent-cyan); font-family: monospace; }
+    }
+    .b-metrics {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .pros-cons {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .pros-list, .cons-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      li {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        font-size: 12px;
+        line-height: 1.4;
+        margin-bottom: 3px;
+        mat-icon { font-size: 14px; width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0; }
+      }
+    }
+    .pros-list li {
+      color: var(--status-accept);
+      mat-icon { color: var(--status-accept); }
+    }
+    .cons-list li {
+      color: #f87171;
+      mat-icon { color: #f87171; }
+    }
+    .verdict-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px dashed var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      mat-icon { color: var(--accent-cyan); font-size: 16px; width: 16px; height: 16px; }
+    }
 
     .constraint-chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .constraint-chip {
@@ -817,5 +1175,16 @@ export class RecommendationDetailComponent implements OnInit {
   formatEventData(data: any): string {
     if (!data) return '';
     return JSON.stringify(data, null, 2);
+  }
+
+  getSelectedSupplierName(): string {
+    if (!this.latestDecision?.selected_supplier_id) {
+      return this.context?.supplier?.name || 'Primary Supplier';
+    }
+    const match = this.context?.candidate_suppliers?.find(s => s.id === this.latestDecision?.selected_supplier_id);
+    if (match) return match.name;
+    if (this.context?.supplier?.id === this.latestDecision.selected_supplier_id) return this.context.supplier.name;
+    if (this.context?.secondary_supplier?.id === this.latestDecision.selected_supplier_id) return this.context.secondary_supplier.name;
+    return `Supplier #${this.latestDecision.selected_supplier_id}`;
   }
 }
