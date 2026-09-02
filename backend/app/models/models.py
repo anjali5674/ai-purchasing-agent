@@ -11,9 +11,11 @@ All 10 models represent the purchasing domain:
 import enum
 from datetime import datetime, timezone
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum, JSON
 )
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import relationship
 
 from app.database.database import Base
@@ -192,6 +194,7 @@ class PurchasingRecommendation(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     node_id = Column(Integer, ForeignKey("fulfillment_nodes.id"), nullable=False)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    secondary_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     recommended_quantity = Column(Integer, nullable=False)
     status = Column(
         Enum(RecommendationStatus),
@@ -202,12 +205,17 @@ class PurchasingRecommendation(Base):
 
     product = relationship("Product", back_populates="recommendations")
     node = relationship("FulfillmentNode", back_populates="recommendations")
+    primary_supplier = relationship("Supplier", foreign_keys=[supplier_id])
+    secondary_supplier = relationship("Supplier", foreign_keys=[secondary_supplier_id])
     decisions = relationship("AgentDecision", back_populates="recommendation")
     activity_logs = relationship(
         "AgentActivityLog",
         back_populates="recommendation",
         order_by="AgentActivityLog.timestamp",
     )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 
 class AgentDecision(Base):
@@ -219,6 +227,9 @@ class AgentDecision(Base):
     )
     decision = Column(Enum(AgentDecisionType), nullable=False)
     suggested_quantity = Column(Integer, nullable=True)
+    selected_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    supplier_selection_reason = Column(Text, nullable=True)
+    supplier_comparison = Column(JSON, nullable=True)
     reasoning = Column(Text, nullable=False)
     important_factors = Column(JSON, nullable=True)  # list of strings
     constraints_checked = Column(JSON, nullable=True)  # list of strings
@@ -227,6 +238,10 @@ class AgentDecision(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     recommendation = relationship("PurchasingRecommendation", back_populates="decisions")
+    selected_supplier = relationship("Supplier", foreign_keys=[selected_supplier_id])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 
 class AgentActivityLog(Base):
